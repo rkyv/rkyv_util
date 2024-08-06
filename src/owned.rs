@@ -1,15 +1,13 @@
 //! Enables us to pass around owned archive types.
 
-use std::{marker::PhantomData, ops::Deref};
+use std::{marker::PhantomData, ops::Deref, rc::Rc, sync::Arc};
 
 use rkyv::Archive;
 
 
 /// An owned archive type.
 #[derive(Default)]
-pub struct OwnedArchive<T, C: StableBytes>
-
-{
+pub struct OwnedArchive<T, C: StableBytes> {
     container: C,
     _type: PhantomData<T>
 }
@@ -53,17 +51,20 @@ impl<C: StableBytes, T: Archive> Deref for OwnedArchive<T, C> {
 ///
 /// For instance, the following malicious implementation would be unsafe:
 /// ```
+/// use rkyv_util::owned::StableBytes;
+/// use std::cell::RefCell;
+///
 /// struct Malicious {
 ///     counter: RefCell<u8>
 /// }
 ///
 /// unsafe impl StableBytes for Malicious {
 ///     fn bytes(&self) -> &[u8] {
-///         counter.borrow_mut() += 1;
-///         if *counter % 2 == 0 {
-///             [0x00]
+///         *self.counter.borrow_mut() += 1;
+///         if *self.counter.borrow() % 2 == 0 {
+///             &[0x00]
 ///         } else {
-///             [0x01]
+///             &[0x01]
 ///         }
 ///     }
 ///
@@ -74,6 +75,9 @@ impl<C: StableBytes, T: Archive> Deref for OwnedArchive<T, C> {
 ///
 /// Another example for safety is as follows:
 /// ```
+/// use rkyv_util::owned::StableBytes;
+/// 
+///
 /// struct Good {
 ///     data: Vec<u8>
 /// }
@@ -91,8 +95,37 @@ pub unsafe trait StableBytes {
     fn bytes(&self) -> &[u8];
 }
 
+
+unsafe impl StableBytes for Vec<u8> {
+    fn bytes(&self) -> &[u8] {
+        self.as_ref()
+    }
+}
+
+unsafe impl StableBytes for Arc<[u8]> {
+    fn bytes(&self) -> &[u8] {
+        self.as_ref()
+    }
+}
+
+unsafe impl StableBytes for Rc<[u8]> {
+    fn bytes(&self) -> &[u8] {
+        self.as_ref()
+    }
+}
+
+unsafe impl StableBytes for Box<[u8]> {
+    fn bytes(&self) -> &[u8] {
+        self.as_ref()
+    }
+}
+
 #[cfg(test)]
 mod tests {
 
+    #[test]
+    fn test_owned_archive_vec() {
+
+    }
     
 }
