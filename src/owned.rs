@@ -5,7 +5,7 @@
 //! to deal with complicated lifetimes.
 
 use core::fmt::Debug;
-use std::{marker::PhantomData, ops::{Deref, DerefMut}, pin::Pin, rc::Rc, sync::Arc};
+use std::{marker::PhantomData, ops::Deref, pin::Pin, rc::Rc, sync::Arc};
 use rkyv::{api::high::HighValidator, bytecheck::CheckBytes, util::AlignedVec, Archive, Portable};
 
 
@@ -41,7 +41,9 @@ use rkyv::{api::high::HighValidator, bytecheck::CheckBytes, util::AlignedVec, Ar
 /// ```
 #[derive(Default)]
 pub struct OwnedArchive<T, C> {
+    /// The container representing the bytes of our archive.
     container: C,
+    /// The type that our archive will decompose into.
     _type: PhantomData<T>
 }
 
@@ -67,10 +69,30 @@ impl<T, C> OwnedArchive<T, C> {
         })
     }
     /// Gets the pinned object as mutable.
-    ///
-    /// ```
-    ///
     /// 
+    /// # Example 
+    /// ```
+    /// use rkyv::rancor::Error;
+    /// use rkyv::util::AlignedVec;
+    /// use rkyv_util::owned::OwnedArchive;
+    ///
+    /// #[derive(rkyv::Archive, rkyv::Serialize)]
+    /// #[rkyv(check_bytes)]
+    /// pub struct Test {
+    ///     hello: u8
+    /// }
+    ///
+    /// let bytes = rkyv::to_bytes::<Error>(&Test {
+    ///     hello: 2
+    /// }).unwrap();
+    ///
+    /// let owned_archive = &mut OwnedArchive::<Test, _>::new::<Error>(bytes).unwrap();
+    /// assert_eq!(owned_archive.hello, 2);
+    /// 
+    /// owned_archive.get_mut().hello = 3;
+    ///
+    /// // `hello` should be 3.
+    /// assert_eq!(owned_archive.hello, 3);
     ///
     /// ```
     pub fn get_mut(&mut self) -> Pin<&mut T::Archived>
@@ -124,14 +146,12 @@ where
 }
 
 
-/// An interface to access stable bytes.
-///
-/// The value of bytes should never change between
-/// accesses.
+/// A contract guaranteeing that bytes should originate
+/// from the same source between accesses.
 ///
 /// # Safety
-/// The interface simply requires that the byte value never
-/// changes.
+/// - `bytes` always refers to the same buffer.
+/// - The **only** way to edit the underlying bytes is through `StableBytesMut`
 ///
 /// For instance, the following malicious implementation would be unsafe:
 /// ```
@@ -155,9 +175,10 @@ where
 /// }
 /// ```
 /// The above code does not meet the safety contract because
-/// every other access will return a different set of bytes.
+/// every other access will return a different set of bytes and it is not
+/// referencing a constant buffer.
 ///
-/// Another example for safety is as follows:
+/// Another example for possible unsafety is as follows:
 /// ```
 /// use rkyv_util::owned::StableBytes;
 /// 
@@ -173,18 +194,90 @@ where
 /// }
 /// ```
 /// The above implementation is only safe if the `Vec<u8>` inside
-/// of `Good` is never mutated. Otherwise the bytes could be changed.
+/// of `Good` is only ever mutated through `StableBytesMut`.
+/// Otherwise the bytes could be changed.
+///
+/// An example that is always safe would be the following:
+/// ```
+/// use rkyv_util::owned::StableBytes;
+/// use std::sync::Arc;
+/// 
+///
+/// struct Good {
+///     data: Arc<[u8]>
+/// }
+///
+/// unsafe impl StableBytes for Good {
+///     fn bytes(&self) -> &[u8] {
+///         self.data.as_ref()
+///     }
+/// }
+/// ```
+/// Since the data within the `Arc<[u8]>` is not mutable, we can never change
+/// it and thus this is necessarily stable.
 pub unsafe trait StableBytes {
     /// Gets the underlying bytes.
     fn bytes(&self) -> &[u8];
 }
 
 
-/// Accesses bytes mutable
+/// A contract guaranteeing that bytes should originate
+/// from the same source between acceses.
+///
+/// # Safety
+/// - `bytes` always refers to the same buffer.
+/// - The **only** way to edit the underlying bytes is through `StableBytesMut`
+///
+/// For instance, the following malicious implementation would be unsafe:
+/// ```
+/// use rkyv_util::owned::StableBytesMut;
+/// use std::cell::RefCell;
+///
+/// struct Malicious {
+///     counter: RefCell<u8>,
+///     buf_one: Vec<u8>,
+///     buf_two: Vec<u8>
+/// }
+///
+/// unsafe impl StableBytesMut for Malicious {
+///     fn bytes_mut(&mut self) -> &mut [u8] {
+///         *self.counter.borrow_mut() += 1;
+///         if *self.counter.borrow() % 2 == 0 {
+///             &mut self.buf_one
+///         } else {
+///             &mut self.buf_two
+///         }
+///     }
+///
+/// }
+/// ```
+/// The above code does not meet the safety contract because
+/// every other access will return a different set of bytes and it is not
+/// referencing a constant buffer.
+///
+/// Another example for possible unsafety is as follows:
+/// ```
+/// use rkyv_util::owned::StableBytesMut;
+/// 
+///
+/// struct Good {
+///     data: Vec<u8>
+/// }
+///
+/// unsafe impl StableBytesMut for Good {
+///     fn bytes_mut(&mut self) -> &mut [u8] {
+///         self.data.as_mut()
+///     }
+/// }
+/// ```
+/// The above implementation is only safe if the `Vec<u8>` inside
+/// of `Good` is only ever mutated through `StableBytesMut`.
+/// Otherwise the bytes could be changed.
 pub unsafe trait StableBytesMut {
     /// Gets the underlying bytes mutably.
     fn bytes_mut(&mut self) -> &mut [u8];
 }
+
 
 // ==============
 // Implementations of `StableBytes` for popular types
@@ -199,6 +292,13 @@ unsafe impl StableBytesMut for AlignedVec {
 unsafe impl StableBytes for AlignedVec {
     fn bytes(&self) -> &[u8] {
         self.as_ref()
+    }
+}
+
+
+unsafe impl StableBytesMut for Vec<u8> {
+    fn bytes_mut(&mut self) -> &mut [u8] {
+        self.as_mut()
     }
 }
 
@@ -220,6 +320,12 @@ unsafe impl StableBytes for Rc<[u8]> {
     }
 }
 
+unsafe impl StableBytesMut for Box<[u8]> {
+    fn bytes_mut(&mut self) -> &mut [u8] {
+        self.as_mut()
+    }
+}
+
 unsafe impl StableBytes for Box<[u8]> {
     fn bytes(&self) -> &[u8] {
         self.as_ref()
@@ -228,7 +334,7 @@ unsafe impl StableBytes for Box<[u8]> {
 
 #[cfg(test)]
 mod tests {
-    use rkyv::{rancor, util::AlignedVec, Archive, Deserialize, Serialize};
+    use rkyv::{rancor, Archive, Deserialize, Serialize};
 
     use super::OwnedArchive;
 
