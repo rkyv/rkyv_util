@@ -1,0 +1,19 @@
+[package]
+name = "rkyv_util"
+version = "0.1.0"
+authors = ["David Koloski <djkoloski@gmail.com>"]
+edition = "2021"
+license = "MIT"
+
+[dependencies]
+rkyv = { version = "0.8.0-alpha.2", default-features = false }
+
+[features]
+default = ["std"]
+alloc = ["rkyv/alloc"]
+std = ["alloc", "rkyv/std"]
+
+[patch.crates-io]
+bytecheck = { git = "https://github.com/rkyv/bytecheck" }
+rancor = { git = "https://github.com/rkyv/rancor" }
+rkyv = { git = "https://github.com/rkyv/rkyv" }
