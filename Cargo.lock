@@ -122,6 +122,9 @@ name = "rend"
 version = "0.5.0-alpha.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "40500eb92db0cddd0bc4df4dcdf84ba5fa977862ccac93395caad6578cb98e5c"
+dependencies = [
+ "bytecheck",
+]
 
 [[package]]
 name = "rkyv"
