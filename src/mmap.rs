@@ -3,10 +3,12 @@
 use std::ops::{Deref, DerefMut};
 
 use memmap2::{Mmap, MmapMut};
-use rkyv::{api::high::HighValidator, bytecheck::CheckBytes, rancor::Source, Archive, Portable};
+use rkyv::{
+    api::high::HighValidator, bytecheck::CheckBytes, rancor::Source, Archive,
+    Portable,
+};
 
 use crate::owned::{OwnedArchive, StableBytes, StableBytesMut};
-
 
 impl<T> OwnedArchive<T, ContractMmap> {
     /// Creates an OwnedArchive from a memory mapped object.
@@ -14,27 +16,53 @@ impl<T> OwnedArchive<T, ContractMmap> {
     /// You cannot use the `new` method to construct an OwnedArchive
     /// because the [StableBytes] and [StableBytesMut] interfaces only
     /// apply to a newtype wrapper. This is to make sure people do not
-    /// casually create these types without taking into consideration the relevant
-    /// safety invariants.
+    /// casually create these types without taking into consideration the
+    /// relevant safety invariants.
     ///
     /// # Safety
-    /// This should hold up the same invariants as the [memmap2](https://docs.rs/memmap2/latest/memmap2/struct.Mmap.html) crate.
-    /// More specifically, if the underlying file is modified the buffer could change,
-    /// therefore compromising the stability. One should therefore guarantee that the underlying
-    /// file holds up the safety invariants set forth by [StableBytes].
+    /// This should hold up the same invariants as the [memmap2] crate.
+    /// More specifically, if the underlying file is modified the buffer could
+    /// change, therefore compromising the stability. One should therefore
+    /// guarantee that the underlying file holds up the safety invariants
+    /// set forth by [StableBytes].
     pub unsafe fn from_mmap<E>(container: Mmap) -> Result<Self, E>
     where
         T: Archive,
         T::Archived: Portable + for<'a> CheckBytes<HighValidator<'a, E>>,
         E: Source,
     {
-    
         Self::new(ContractMmap(container))
     }
 }
 
-// TODO: Add a safe wrapper so the standard methods do not work with it.
+impl<T> OwnedArchive<T, ContractMmapMut> {
+    /// Creates an OwnedArchive from a mutable memory mapped object.
+    ///
+    /// You cannot use the `new` method to construct an OwnedArchive
+    /// because the [StableBytes] and [StableBytesMut] interfaces only
+    /// apply to a newtype wrapper. This is to make sure people do not
+    /// casually create these types without taking into consideration the
+    /// relevant safety invariants.
+    ///
+    /// # Safety
+    /// This should hold up the same invariants as the [memmap2] crate.
+    /// More specifically, if the underlying file is modified the buffer could
+    /// change, therefore compromising the stability. One should therefore
+    /// guarantee that the underlying file holds up the safety invariants
+    /// set forth by [StableBytes].
+    pub unsafe fn from_mmap_mut<E>(container: MmapMut) -> Result<Self, E>
+    where
+        T: Archive,
+        T::Archived: Portable + for<'a> CheckBytes<HighValidator<'a, E>>,
+        E: Source,
+    {
+        Self::new(ContractMmapMut(container))
+    }
+}
 
+/// A newtype wrapper around the [Mmap] type. This prevents the creation of
+/// [OwnedArchive] through the `new` method and therefore causes the programmer
+/// to think about the relevant safety invariants that must be held up.
 struct ContractMmap(Mmap);
 
 impl Deref for ContractMmap {
@@ -45,6 +73,9 @@ impl Deref for ContractMmap {
     }
 }
 
+/// A newtype wrapper around the [MmapMut] type. This prevents the creation of
+/// [OwnedArchive] through the `new` method and therefore causes the programmer
+/// to think about the relevant safety invariants that must be held up.
 struct ContractMmapMut(MmapMut);
 
 impl Deref for ContractMmapMut {
@@ -67,8 +98,6 @@ unsafe impl StableBytes for ContractMmap {
     }
 }
 
-
-
 unsafe impl StableBytes for ContractMmapMut {
     fn bytes(&self) -> &[u8] {
         self.as_ref()
@@ -81,17 +110,12 @@ unsafe impl StableBytesMut for ContractMmapMut {
     }
 }
 
-
-
 #[cfg(test)]
 mod tests {
 
     use ::std::io::{Seek, SeekFrom, Write};
-
-    use memmap2::Mmap;
+    use memmap2::{Mmap, MmapMut};
     use rkyv::{rancor, Archive, Deserialize, Serialize};
-
-    use crate::std;
 
     use super::OwnedArchive;
 
@@ -109,17 +133,15 @@ mod tests {
         let bytes = rkyv::to_bytes::<rancor::Error>(&stub).unwrap();
 
         let mut tfile = tempfile::tempfile().unwrap();
-       
+
         tfile.write_all(&bytes).unwrap();
         tfile.seek(SeekFrom::Start(0)).unwrap();
-       // write(tfile.path(), contents)
-
+        // write(tfile.path(), contents)
 
         let mmap = unsafe { Mmap::map(&tfile) }.unwrap();
 
-        
-        let owned: OwnedArchive<ArchiveStub, _> = unsafe {
-            OwnedArchive::from_mmap::<rancor::Error>(mmap) }.unwrap();
+        let owned: OwnedArchive<ArchiveStub, _> =
+            unsafe { OwnedArchive::from_mmap::<rancor::Error>(mmap) }.unwrap();
 
         // Finally check to see that both are equal.
         assert_eq!(owned.hello, 4);
@@ -127,7 +149,35 @@ mod tests {
 
         // Finally check to see that both are equal.
         assert_eq!(stub, *owned);
-        
     }
 
+    #[test]
+    fn test_owned_archive_vec_mmap_mut() {
+        let stub = ArchiveStub { hello: 4, world: 5 };
+
+        let bytes = rkyv::to_bytes::<rancor::Error>(&stub).unwrap();
+
+        let mut tfile = tempfile::tempfile().unwrap();
+
+        tfile.write_all(&bytes).unwrap();
+        tfile.seek(SeekFrom::Start(0)).unwrap();
+        // write(tfile.path(), contents)
+
+        let mmap = unsafe { MmapMut::map_mut(&tfile) }.unwrap();
+
+        let mut owned: OwnedArchive<ArchiveStub, _> =
+            unsafe { OwnedArchive::from_mmap_mut::<rancor::Error>(mmap) }
+                .unwrap();
+
+        // Finally check to see that both are equal.
+        assert_eq!(owned.hello, 4);
+        assert_eq!(owned.world, 5);
+
+        // Finally check to see that both are equal.
+        assert_eq!(stub, *owned);
+
+        // Modify it
+        owned.get_mut().hello = 3;
+        assert_eq!(owned.hello, 3);
+    }
 }

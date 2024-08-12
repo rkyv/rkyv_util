@@ -5,8 +5,6 @@ use std::{rc::Rc, sync::Arc};
 
 use crate::owned::StableBytes;
 
-
-
 unsafe impl StableBytes for Arc<[u8]> {
     fn bytes(&self) -> &[u8] {
         self.as_ref()
