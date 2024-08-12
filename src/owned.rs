@@ -4,12 +4,12 @@
 //! we want to pass Archives around in channels but we do not want
 //! to deal with complicated lifetimes.
 
-use core::fmt::Debug;
-use std::{marker::PhantomData, ops::Deref, pin::Pin, rc::Rc, sync::Arc};
+use core::{fmt::Debug, marker::PhantomData, ops::Deref, pin::Pin};
 
+// use memmap2::{Mmap, MmapMut};
 use rkyv::{
-    api::high::HighValidator, bytecheck::CheckBytes, util::AlignedVec, Archive,
-    Portable,
+    api::high::HighValidator, bytecheck::CheckBytes, rancor::Source,
+    util::AlignedVec, Archive, Portable,
 };
 
 /// An owned archive type.
@@ -54,7 +54,7 @@ impl<T, C> OwnedArchive<T, C> {
     where
         T: Archive,
         T::Archived: Portable + for<'a> CheckBytes<HighValidator<'a, E>>,
-        E: rkyv::rancor::Source,
+        E: Source,
         C: StableBytes,
     {
         // Here we check if the bytes are good. If so, we will
@@ -287,6 +287,12 @@ pub unsafe trait StableBytesMut: StableBytes {
 // Implementations of `StableBytes` for popular types
 // ==============
 
+unsafe impl StableBytes for &[u8] {
+    fn bytes(&self) -> &[u8] {
+        self
+    }
+}
+
 unsafe impl StableBytesMut for AlignedVec {
     fn bytes_mut(&mut self) -> &mut [u8] {
         self.as_mut()
@@ -306,18 +312,6 @@ unsafe impl StableBytesMut for Vec<u8> {
 }
 
 unsafe impl StableBytes for Vec<u8> {
-    fn bytes(&self) -> &[u8] {
-        self.as_ref()
-    }
-}
-
-unsafe impl StableBytes for Arc<[u8]> {
-    fn bytes(&self) -> &[u8] {
-        self.as_ref()
-    }
-}
-
-unsafe impl StableBytes for Rc<[u8]> {
     fn bytes(&self) -> &[u8] {
         self.as_ref()
     }

@@ -6,12 +6,17 @@ edition = "2021"
 license = "MIT"
 
 [dependencies]
+memmap2 = { version = "0.9.4", optional = true }
 rkyv = { version = "0.8.0-alpha.2", default-features = false, features = ["bytecheck"] }
+
+[dev-dependencies]
+tempfile = "3.12.0"
 
 [features]
 default = ["std"]
 alloc = ["rkyv/alloc"]
 std = ["alloc", "rkyv/std"]
+memmap2 = ["dep:memmap2"]
 
 [patch.crates-io]
 bytecheck = { git = "https://github.com/rkyv/bytecheck" }
