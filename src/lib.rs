@@ -24,3 +24,5 @@
 "#)]
 
 pub mod owned;
+pub mod mmap;
+pub mod std;
