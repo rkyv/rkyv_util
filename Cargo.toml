@@ -13,7 +13,7 @@ rkyv = { version = "0.8.0-alpha.2", default-features = false, features = ["bytec
 tempfile = "3.12.0"
 
 [features]
-default = ["std", "memmap2"]
+default = ["std"]
 alloc = ["rkyv/alloc"]
 std = ["alloc", "rkyv/std"]
 memmap2 = ["dep:memmap2"]
