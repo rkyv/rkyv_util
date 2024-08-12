@@ -287,6 +287,12 @@ pub unsafe trait StableBytesMut: StableBytes {
 // Implementations of `StableBytes` for popular types
 // ==============
 
+unsafe impl StableBytes for &[u8] {
+    fn bytes(&self) -> &[u8] {
+        self
+    }
+}
+
 unsafe impl StableBytesMut for AlignedVec {
     fn bytes_mut(&mut self) -> &mut [u8] {
         self.as_mut()

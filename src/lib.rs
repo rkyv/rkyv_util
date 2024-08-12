@@ -24,5 +24,9 @@
 "#)]
 
 pub mod owned;
+
+#[cfg(feature = "memmap2")]
 pub mod mmap;
+
+#[cfg(feature = "std")]
 pub mod std;
