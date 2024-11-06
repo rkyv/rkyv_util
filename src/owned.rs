@@ -8,8 +8,8 @@ use core::fmt::Debug;
 use std::{marker::PhantomData, ops::Deref, rc::Rc, sync::Arc};
 
 use rkyv::{
-    api::high::HighValidator, bytecheck::CheckBytes, util::AlignedVec, Archive,
-    Portable, seal::Seal
+    api::high::HighValidator, bytecheck::CheckBytes, seal::Seal,
+    util::AlignedVec, Archive, Portable,
 };
 
 /// An owned archive type.
@@ -335,7 +335,7 @@ unsafe impl StableBytes for Box<[u8]> {
 
 #[cfg(test)]
 mod tests {
-    use rkyv::{rancor, Archive, Deserialize, Serialize, munge::munge};
+    use rkyv::{munge::munge, rancor, Archive, Deserialize, Serialize};
 
     use super::OwnedArchive;
 
