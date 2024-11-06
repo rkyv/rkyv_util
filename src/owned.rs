@@ -85,8 +85,9 @@ impl<T, C> OwnedArchive<T, C> {
     ///
     /// munge!(let ArchivedTest { mut hello, ..} = owned_archive.get_mut());
     /// *hello = 3;
-    /// // `hello` should be 3.
+    /// // `hello` should be 3 back in the owned archive.
     /// assert_eq!(*hello, 3);
+    /// assert_eq!(owned_archive.hello, 3);
     /// ```
     pub fn get_mut(&mut self) -> Seal<T::Archived>
     where
