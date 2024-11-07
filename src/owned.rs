@@ -5,11 +5,11 @@
 //! to deal with complicated lifetimes.
 
 use core::fmt::Debug;
-use std::{marker::PhantomData, ops::Deref, pin::Pin, rc::Rc, sync::Arc};
+use std::{marker::PhantomData, ops::Deref, rc::Rc, sync::Arc};
 
 use rkyv::{
-    api::high::HighValidator, bytecheck::CheckBytes, util::AlignedVec, Archive,
-    Portable,
+    api::high::HighValidator, bytecheck::CheckBytes, seal::Seal,
+    util::AlignedVec, Archive, Portable,
 };
 
 /// An owned archive type.
@@ -29,7 +29,6 @@ use rkyv::{
 /// use rkyv_util::owned::OwnedArchive;
 ///
 /// #[derive(rkyv::Archive, rkyv::Serialize)]
-/// #[rkyv(check_bytes)]
 /// pub struct Test {
 ///     hello: u8,
 /// }
@@ -70,11 +69,10 @@ impl<T, C> OwnedArchive<T, C> {
     ///
     /// # Example
     /// ```
-    /// use rkyv::{rancor::Error, util::AlignedVec};
+    /// use rkyv::{rancor::Error, util::AlignedVec, munge::munge};
     /// use rkyv_util::owned::OwnedArchive;
     ///
     /// #[derive(rkyv::Archive, rkyv::Serialize)]
-    /// #[rkyv(check_bytes)]
     /// pub struct Test {
     ///     hello: u8,
     /// }
@@ -85,12 +83,13 @@ impl<T, C> OwnedArchive<T, C> {
     ///     &mut OwnedArchive::<Test, _>::new::<Error>(bytes).unwrap();
     /// assert_eq!(owned_archive.hello, 2);
     ///
-    /// owned_archive.get_mut().hello = 3;
-    ///
-    /// // `hello` should be 3.
+    /// munge!(let ArchivedTest { mut hello, ..} = owned_archive.get_mut());
+    /// *hello = 3;
+    /// // `hello` should be 3 back in the owned archive.
+    /// assert_eq!(*hello, 3);
     /// assert_eq!(owned_archive.hello, 3);
     /// ```
-    pub fn get_mut(&mut self) -> Pin<&mut T::Archived>
+    pub fn get_mut(&mut self) -> Seal<T::Archived>
     where
         T: Archive,
         T::Archived: Portable,
@@ -337,12 +336,12 @@ unsafe impl StableBytes for Box<[u8]> {
 
 #[cfg(test)]
 mod tests {
-    use rkyv::{rancor, Archive, Deserialize, Serialize};
+    use rkyv::{munge::munge, rancor, Archive, Deserialize, Serialize};
 
     use super::OwnedArchive;
 
     #[derive(Archive, Clone, PartialEq, Deserialize, Serialize, Debug)]
-    #[rkyv(check_bytes, compare(PartialEq), derive(Debug))]
+    #[rkyv(compare(PartialEq), derive(Debug))]
     pub struct ArchiveStub {
         hello: u8,
         world: u64,
@@ -375,8 +374,11 @@ mod tests {
         // Check that they are the same.
         assert_eq!(stub, *owned);
 
-        owned.get_mut().hello = 4;
+        // Check mutability
+        munge!(let ArchivedArchiveStub { mut hello, ..} = owned.get_mut());
+        assert_eq!(*hello, 4);
 
-        assert_eq!(owned.hello, 4);
+        *hello = 9;
+        assert_eq!(owned.hello, 9);
     }
 }

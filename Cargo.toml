@@ -6,7 +6,7 @@ edition = "2021"
 license = "MIT"
 
 [dependencies]
-rkyv = { version = "0.8.0-alpha.2", default-features = false, features = ["bytecheck"] }
+rkyv = { version = "0.8.8", default-features = false, features = ["bytecheck"] }
 
 [features]
 default = ["std"]
