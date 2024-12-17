@@ -161,7 +161,7 @@ dependencies = [
 
 [[package]]
 name = "rkyv_util"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "rkyv",
 ]
@@ -209,18 +209,3 @@ name = "uuid"
 version = "1.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "81dfa00651efa65069b0b6b651f4aaa31ba9e3c3ce0137aaad053604ee7e0314"
-
-[[patch.unused]]
-name = "bytecheck"
-version = "0.8.0-alpha.9"
-source = "git+https://github.com/rkyv/bytecheck#f5dcf094ad6befc9605080631fac7e0abb88ea68"
-
-[[patch.unused]]
-name = "rancor"
-version = "0.1.0-alpha.9"
-source = "git+https://github.com/rkyv/rancor#3b5406673867cba2525ac61a3e6eee25bacda96d"
-
-[[patch.unused]]
-name = "rkyv"
-version = "0.8.0-alpha.2"
-source = "git+https://github.com/rkyv/rkyv#71bf87fb08170b33a9965cddae5498e74e68dbf3"
