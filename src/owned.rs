@@ -4,11 +4,11 @@
 //! we want to pass Archives around in channels but we do not want
 //! to deal with complicated lifetimes.
 
-use core::{fmt::Debug, marker::PhantomData, ops::Deref};
+use core::{fmt, marker::PhantomData, ops::Deref};
 
 use rkyv::{
     api::high::HighValidator, bytecheck::CheckBytes, rancor::Source,
-    seal::Seal, util::AlignedVec, Archive, Portable,
+    seal::Seal, util::AlignedVec, Portable,
 };
 
 /// An owned archive type.
@@ -34,7 +34,8 @@ use rkyv::{
 ///
 /// let bytes = rkyv::to_bytes::<Error>(&Test { hello: 2 }).unwrap();
 ///
-/// let owned_archive = OwnedArchive::<Test, _>::new::<Error>(bytes).unwrap();
+/// let owned_archive =
+///     OwnedArchive::<ArchivedTest, _>::new::<Error>(bytes).unwrap();
 /// assert_eq!(owned_archive.hello, 2);
 /// ```
 #[derive(Default)]
@@ -50,21 +51,21 @@ impl<T, C> OwnedArchive<T, C> {
     /// that supports the `StableBytes` interface.
     pub fn new<E>(container: C) -> Result<Self, E>
     where
-        T: Archive,
-        T::Archived: Portable + for<'a> CheckBytes<HighValidator<'a, E>>,
+        T: Portable + for<'a> CheckBytes<HighValidator<'a, E>>,
         E: Source,
         C: StableBytes,
     {
         // Here we check if the bytes are good. If so, we will
         // allow for the creation of the `OwnedArchive`.
-        rkyv::access::<T::Archived, E>(container.bytes())?;
+        rkyv::access::<T, E>(container.bytes())?;
 
         Ok(Self {
             container,
             _type: PhantomData,
         })
     }
-    /// Gets the pinned object as mutable.
+
+    /// Returns a mutable `Seal` of the archived value.
     ///
     /// # Example
     /// ```
@@ -79,7 +80,7 @@ impl<T, C> OwnedArchive<T, C> {
     /// let bytes = rkyv::to_bytes::<Error>(&Test { hello: 2 }).unwrap();
     ///
     /// let owned_archive =
-    ///     &mut OwnedArchive::<Test, _>::new::<Error>(bytes).unwrap();
+    ///     &mut OwnedArchive::<ArchivedTest, _>::new::<Error>(bytes).unwrap();
     /// assert_eq!(owned_archive.hello, 2);
     ///
     /// munge!(let ArchivedTest { mut hello, ..} = owned_archive.get_mut());
@@ -88,10 +89,9 @@ impl<T, C> OwnedArchive<T, C> {
     /// assert_eq!(*hello, 3);
     /// assert_eq!(owned_archive.hello, 3);
     /// ```
-    pub fn get_mut(&mut self) -> Seal<'_, T::Archived>
+    pub fn get_mut(&mut self) -> Seal<'_, T>
     where
-        T: Archive,
-        T::Archived: Portable,
+        T: Portable,
         C: StableBytesMut,
     {
         // # Safety
@@ -100,16 +100,12 @@ impl<T, C> OwnedArchive<T, C> {
         // underlying bytes remain stable, and thus the container that
         // we took ownership of when creating the `OwnedArchive` has
         // already been created.
-        unsafe {
-            rkyv::access_unchecked_mut::<T::Archived>(
-                self.container.bytes_mut(),
-            )
-        }
+        unsafe { rkyv::access_unchecked_mut::<T>(self.container.bytes_mut()) }
     }
 }
 
-impl<C: StableBytes, T: Archive> Deref for OwnedArchive<T, C> {
-    type Target = T::Archived;
+impl<T: Portable, C: StableBytes> Deref for OwnedArchive<T, C> {
+    type Target = T;
 
     fn deref(&self) -> &Self::Target {
         // # Safety
@@ -131,12 +127,12 @@ impl<T, C: Clone> Clone for OwnedArchive<T, C> {
     }
 }
 
-impl<T: Archive, C: StableBytes> Debug for OwnedArchive<T, C>
+impl<T: Portable, C: StableBytes> fmt::Debug for OwnedArchive<T, C>
 where
-    T::Archived: Debug,
+    T: fmt::Debug,
 {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        self.deref().fmt(f)
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        T::fmt(&**self, f)
     }
 }
 
@@ -285,15 +281,33 @@ pub unsafe trait StableBytesMut: StableBytes {
 // Implementations of `StableBytes` for popular types
 // ==============
 
-unsafe impl StableBytes for &[u8] {
+unsafe impl<T: StableBytes> StableBytes for &T {
+    fn bytes(&self) -> &[u8] {
+        T::bytes(self)
+    }
+}
+
+unsafe impl<T: StableBytes> StableBytes for &mut T {
+    fn bytes(&self) -> &[u8] {
+        T::bytes(self)
+    }
+}
+
+unsafe impl<T: StableBytesMut> StableBytesMut for &mut T {
+    fn bytes_mut(&mut self) -> &mut [u8] {
+        T::bytes_mut(self)
+    }
+}
+
+unsafe impl StableBytes for [u8] {
     fn bytes(&self) -> &[u8] {
         self
     }
 }
 
-unsafe impl StableBytesMut for AlignedVec {
+unsafe impl StableBytesMut for [u8] {
     fn bytes_mut(&mut self) -> &mut [u8] {
-        self.as_mut()
+        self
     }
 }
 
@@ -303,7 +317,7 @@ unsafe impl StableBytes for AlignedVec {
     }
 }
 
-unsafe impl StableBytesMut for Vec<u8> {
+unsafe impl StableBytesMut for AlignedVec {
     fn bytes_mut(&mut self) -> &mut [u8] {
         self.as_mut()
     }
@@ -315,7 +329,7 @@ unsafe impl StableBytes for Vec<u8> {
     }
 }
 
-unsafe impl StableBytesMut for Box<[u8]> {
+unsafe impl StableBytesMut for Vec<u8> {
     fn bytes_mut(&mut self) -> &mut [u8] {
         self.as_mut()
     }
@@ -327,6 +341,12 @@ unsafe impl StableBytes for Box<[u8]> {
     }
 }
 
+unsafe impl StableBytesMut for Box<[u8]> {
+    fn bytes_mut(&mut self) -> &mut [u8] {
+        self.as_mut()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use rkyv::{munge::munge, rancor, Archive, Deserialize, Serialize};
@@ -335,18 +355,18 @@ mod tests {
 
     #[derive(Archive, Clone, PartialEq, Deserialize, Serialize, Debug)]
     #[rkyv(compare(PartialEq), derive(Debug))]
-    pub struct ArchiveStub {
+    pub struct Foo {
         hello: u8,
         world: u64,
     }
 
     #[test]
     fn test_owned_archive_vec() {
-        let stub = ArchiveStub { hello: 4, world: 5 };
+        let stub = Foo { hello: 4, world: 5 };
 
         let bytes = rkyv::to_bytes::<rancor::Error>(&stub).unwrap();
-        let owned: OwnedArchive<ArchiveStub, _> =
-            OwnedArchive::new::<rancor::Error>(bytes).unwrap();
+        let owned = OwnedArchive::<ArchivedFoo, _>::new::<rancor::Error>(bytes)
+            .unwrap();
 
         // Finally check to see that both are equal.
         assert_eq!(owned.hello, 4);
@@ -358,17 +378,18 @@ mod tests {
 
     #[test]
     fn test_owned_archive_vec_mut() {
-        let stub = ArchiveStub { hello: 4, world: 5 };
+        let stub = Foo { hello: 4, world: 5 };
 
         let bytes = rkyv::to_bytes::<rancor::Error>(&stub).unwrap();
-        let mut owned: OwnedArchive<ArchiveStub, _> =
-            OwnedArchive::new::<rancor::Error>(bytes).unwrap();
+        let mut owned =
+            OwnedArchive::<ArchivedFoo, _>::new::<rancor::Error>(bytes)
+                .unwrap();
 
         // Check that they are the same.
         assert_eq!(stub, *owned);
 
         // Check mutability
-        munge!(let ArchivedArchiveStub { mut hello, ..} = owned.get_mut());
+        munge!(let ArchivedFoo { mut hello, ..} = owned.get_mut());
         assert_eq!(*hello, 4);
 
         *hello = 9;

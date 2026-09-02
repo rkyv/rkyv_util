@@ -25,8 +25,9 @@ unsafe impl StableBytesMut for MmapMut {
 #[cfg(test)]
 mod tests {
     use std::io::{Seek, SeekFrom, Write};
+
     use memmap2_0_9::{Mmap, MmapMut};
-    use rkyv::{rancor, Archive, Deserialize, Serialize, munge::munge};
+    use rkyv::{munge::munge, rancor, Archive, Deserialize, Serialize};
 
     use crate::owned::OwnedArchive;
 
@@ -50,7 +51,8 @@ mod tests {
 
         let mmap = unsafe { Mmap::map(&tfile) }.unwrap();
 
-        let owned = OwnedArchive::<Foo, _>::new::<rancor::Error>(mmap).unwrap();
+        let owned =
+            OwnedArchive::<ArchivedFoo, _>::new::<rancor::Error>(mmap).unwrap();
 
         // Finally check to see that both are equal.
         assert_eq!(owned.hello, 4);
@@ -74,7 +76,8 @@ mod tests {
 
         let mmap = unsafe { MmapMut::map_mut(&tfile) }.unwrap();
 
-        let mut owned = OwnedArchive::<Foo, _>::new::<rancor::Error>(mmap).unwrap();
+        let mut owned =
+            OwnedArchive::<ArchivedFoo, _>::new::<rancor::Error>(mmap).unwrap();
 
         // Finally check to see that both are equal.
         assert_eq!(owned.hello, 4);
