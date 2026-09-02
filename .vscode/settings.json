@@ -1,0 +1,5 @@
+{
+    "rust-analyzer.cargo.features": [
+        "memmap2-0_9",
+    ]
+}

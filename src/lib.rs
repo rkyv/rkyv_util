@@ -23,4 +23,8 @@
     13.512-13.512-2.702 2.703-2.702-8.107-8.107z"/%3E%3C/svg%3E
 "#)]
 
+#[cfg(feature = "memmap2-0_9")]
+mod memmap2;
 pub mod owned;
+#[cfg(feature = "std")]
+mod std;
